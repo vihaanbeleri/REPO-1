@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rupee Time Machine</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load D3.js for charting -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        /* Custom styles for the app */
+        :root {
+            --primary: #4f46e5; /* Indigo-600 */
+            --secondary: #00b894; /* Teal for flair/accents */
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8; /* Soft light blue/gray background */
+            /* Add a very subtle radial gradient for depth */
+            background-image: radial-gradient(circle at top left, #ffffff 1%, #f0f4f8 60%);
+        }
+        .card {
+            /* Deeper, softer shadow for a "floating" effect */
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+            transition: transform 0.3s ease;
+        }
+        .card:hover {
+            transform: translateY(-2px); /* Slight lift on hover */
+        }
+        .rupee-symbol {
+            font-weight: 700;
+            color: var(--primary);
+            margin-right: 4px;
+        }
+        /* Style for D3 graph container */
+        #gold-graph-container {
+            width: 100%;
+            height: 450px; /* Slightly taller */
+            margin-top: 2rem;
+            padding: 1rem;
+            background: white;
+            border-radius: 1rem; /* Slightly more rounded */
+            border: 1px solid #e2e8f0;
+            overflow: hidden;
+        }
+        /* Responsive adjustments for mobile */
+        @media (max-width: 640px) {
+            .input-group {
+                flex-direction: column;
+            }
+            .input-group > * {
+                width: 100%;
+                margin-bottom: 1rem;
+            }
+        }
+
+        /* D3 Graph specific styles */
+        .axis text {
+            font-size: 11px;
+            fill: #6b7280;
+        }
+        .axis path, .axis line {
+            fill: none;
+            stroke: #e2e8f0; /* Lighter grid lines */
+            shape-rendering: crispEdges;
+        }
+        .line {
+            fill: none;
+            stroke: var(--primary);
+            stroke-width: 4px; /* Thicker line */
+        }
+        .gold-area {
+            /* D3 will fill this with the gradient defined in JS */
+            opacity: 0.7;
+            transition: opacity 0.5s ease;
+        }
+        /* Fancier result display */
+        .result-fancy {
+            background: linear-gradient(135deg, #e0f2fe, #dbeafe); /* Light blue gradient */
+            border-left: 6px solid var(--primary);
+            transition: all 0.3s ease;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-10">
+
+    <div id="app" class="max-w-4xl mx-auto">
+        <h1 class="text-4xl lg:text-5xl font-extrabold text-center mb-4 text-gray-900 leading-tight">
+            ⏳ Rupee Time Machine
+        </h1>
+        <p class="text-center text-gray-500 mb-10 text-lg">
+            A look at the dramatic shift in the purchasing power of the Indian Rupee.
+        </p>
+
+        <!-- Main Conversion Card -->
+        <div class="card bg-white p-6 md:p-10 rounded-2xl mb-12 border border-indigo-100">
+            <h2 class="text-2xl font-bold text-gray-800 mb-6">Calculate Historical Value</h2>
+
+            <div class="input-group flex flex-col md:flex-row gap-4 mb-6">
+                <!-- Year Selector -->
+                <div class="flex-1">
+                    <label for="year-select" class="block text-sm font-medium text-gray-700 mb-2">Select Historical Year:</label>
+                    <select id="year-select" class="w-full border-gray-300 rounded-xl p-3 bg-gray-50 text-lg focus:ring-indigo-500 focus:border-indigo-500 transition duration-300 ease-in-out">
+                        <!-- Options populated by JS -->
+                    </select>
+                </div>
+                <!-- Amount Input -->
+                <div class="flex-1">
+                    <label for="amount-input" class="block text-sm font-medium text-gray-700 mb-2">Enter Amount (₹):</label>
+                    <input type="number" id="amount-input" value="100" min="1" class="w-full border-gray-300 rounded-xl p-3 text-lg focus:ring-indigo-500 focus:border-indigo-500 transition duration-300 ease-in-out">
+                </div>
+            </div>
+
+            <button id="calculate-btn" class="w-full bg-indigo-600 text-white font-extrabold py-4 px-4 rounded-xl shadow-lg hover:bg-indigo-700 focus:outline-none focus:ring-4 focus:ring-indigo-500 focus:ring-opacity-70 transition duration-300 ease-in-out flex items-center justify-center space-x-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8v2m0 4v2m-6 3h12a2 2 0 002-2V7a2 2 0 00-2-2H6a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+                <span>Calculate Today's Purchasing Power</span>
+            </button>
+
+            <!-- Result Display - Fancier styling applied via JS class -->
+            <div id="result-display" class="mt-8 p-6 rounded-xl result-fancy text-center hidden">
+                <p class="text-xl text-gray-800 font-semibold">
+                    Your <span id="amount-out" class="font-bold text-2xl text-indigo-800"></span> in <span id="year-out" class="font-bold text-2xl text-indigo-800"></span>
+                    had the estimated purchasing power of:
+                </p>
+                <p class="text-6xl font-extrabold mt-3 text-indigo-700">
+                    <span class="rupee-symbol text-7xl">₹</span><span id="today-value"></span>
+                </p>
+                <p class="text-xl text-gray-500 block mt-1">(Today's Equivalent Value)</p>
+                <p id="cpi-info" class="text-sm text-indigo-600 mt-4 font-medium"></p>
+            </div>
+        </div>
+
+        <!-- Gold Price Chart -->
+        <h2 class="text-2xl font-bold text-gray-800 mb-4 mt-12 flex items-center space-x-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-yellow-500" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M10 2a1 1 0 011 1v1.512c1.782.164 3.49.774 5.022 1.761a.5.5 0 01-.293.856l-1.396.698A7.001 7.001 0 0010 6.002V3a1 1 0 011-1zm-1 0a1 1 0 00-1 1v1.512A7.001 7.001 0 003.667 8.127a.5.5 0 00-.293.856l-1.396.698A9.001 9.001 0 0110 4.002V3a1 1 0 00-1-1zm-1.5 8.5a.5.5 0 000 1h3a.5.5 0 000-1h-3z" clip-rule="evenodd" />
+            </svg>
+            <span>Rupee Value vs. Gold (10g, 24K)</span>
+        </h2>
+        <div id="gold-graph-container" class="card">
+            <svg id="gold-graph" class="w-full h-full"></svg>
+        </div>
+        <p class="text-sm text-gray-500 mt-3 text-center">
+            The chart demonstrates the exponential rise in the price of 10g of 24K Gold in INR over time.
+        </p>
+
+
+        <!-- Commodity Comparison Table -->
+        <h2 class="text-2xl font-bold text-gray-800 mb-4 mt-12">Historical Commodity Prices</h2>
+        <p class="text-gray-600 mb-6">
+            A snapshot of how essential commodities have increased in price (all values are approximate averages).
+        </p>
+        <div id="commodities-container" class="card bg-white p-4 rounded-xl overflow-x-auto border border-gray-200">
+            <!-- Commodity table generated by JS -->
+        </div>
+
+    </div>
+
+    <script>
+        // Data based on mock historical CPI and price trends, using 1947 as a base year.
+        // CPI values are indices relative to a modern base (e.g., 2024 = 100), used for power calculation.
+        const CPI_DATA = {
+            1947: 0.1, 1950: 0.12, 1960: 0.2, 1970: 0.35, 1980: 0.6,
+            1990: 1.2, 2000: 2.8, 2005: 4.5, 2010: 6.5, 2015: 8.5,
+            2020: 9.5, 2024: 10
+        };
+        const CURRENT_YEAR = 2024;
+        const CURRENT_CPI = CPI_DATA[CURRENT_YEAR];
+        
+        // Data for Gold Price Graph (INR per 10 grams, 24K)
+        const GOLD_PRICE_DATA = [
+            { year: 1947, price: 88.62 },
+            { year: 1950, price: 99.00 },
+            { year: 1960, price: 111.00 },
+            { year: 1970, price: 184.00 },
+            { year: 1980, price: 1330.00 },
+            { year: 1990, price: 3200.00 },
+            { year: 2000, price: 4400.00 },
+            { year: 2010, price: 18500.00 },
+            { year: 2024, price: 77913.00 } // Average/Latest
+        ].sort((a, b) => a.year - b.year); // Ensure data is sorted
+
+        // Data for Commodity Table (Approximate price per unit)
+        const COMMODITY_DATA = {
+            'Petrol (per Litre)': {
+                1947: 0.27, 1970: 0.90, 1990: 4.20, 2010: 52.00, 2024: 100.00
+            },
+            'Milk (per Litre)': {
+                1947: 0.10, 1970: 1.00, 1990: 6.00, 2010: 30.00, 2024: 60.00
+            },
+            'Sugar (per Kg)': {
+                1947: 0.80, 1970: 1.80, 1990: 9.00, 2010: 28.00, 2024: 57.00
+            },
+            'Gold (10g, 24K)': {
+                1947: 88.62, 1970: 184.00, 1990: 3200.00, 2010: 18500.00, 2024: 77913.00
+            }
+        };
+
+        const COMMODITY_YEARS = [1947, 1970, 1990, 2010, 2024];
+
+        /**
+         * Initializes the application: populates the year selector and renders supplementary data.
+         */
+        function init() {
+            populateYearSelector();
+            document.getElementById('calculate-btn').addEventListener('click', calculateValue);
+            // Bind input and change events to recalculate automatically
+            document.getElementById('year-select').addEventListener('change', calculateValue);
+            document.getElementById('amount-input').addEventListener('input', calculateValue);
+            
+            renderCommoditiesTable();
+            renderGoldGraph();
+            calculateValue(); // Run calculation on load with default values
+        }
+
+        /**
+         * Populates the dropdown menu with years from CPI_DATA.
+         */
+        function populateYearSelector() {
+            const select = document.getElementById('year-select');
+            const years = Object.keys(CPI_DATA).map(Number).sort((a, b) => b - a);
+            
+            years.forEach(year => {
+                const option = document.createElement('option');
+                option.value = year;
+                option.textContent = year;
+                select.appendChild(option);
+            });
+            // Select 1947 by default for maximum impact
+            select.value = 1947;
+        }
+
+        /**
+         * Calculates the purchasing power based on CPI data.
+         */
+        function calculateValue() {
+            const yearSelect = document.getElementById('year-select');
+            const amountInput = document.getElementById('amount-input');
+            const resultDisplay = document.getElementById('result-display');
+            const todayValueSpan = document.getElementById('today-value');
+            const amountOutSpan = document.getElementById('amount-out');
+            const yearOutSpan = document.getElementById('year-out');
+            const cpiInfoSpan = document.getElementById('cpi-info');
+
+            const selectedYear = parseInt(yearSelect.value);
+            const originalAmount = parseFloat(amountInput.value);
+
+            // Basic validation
+            if (isNaN(originalAmount) || originalAmount <= 0 || !CPI_DATA[selectedYear]) {
+                resultDisplay.classList.add('hidden');
+                return;
+            }
+
+            const historicalCPI = CPI_DATA[selectedYear];
+            const conversionFactor = CURRENT_CPI / historicalCPI;
+            const calculatedValue = originalAmount * conversionFactor;
+
+            // Update UI
+            amountOutSpan.textContent = originalAmount.toLocaleString('en-IN');
+            yearOutSpan.textContent = selectedYear;
+            todayValueSpan.textContent = calculatedValue.toLocaleString('en-IN', {
+                minimumFractionDigits: 0, // No decimal if the value is high
+                maximumFractionDigits: 2
+            });
+
+            cpiInfoSpan.textContent = `Based on CPI data, ₹1 from ${selectedYear} is approximately equivalent to ₹${conversionFactor.toFixed(2)} today.`;
+
+            resultDisplay.classList.remove('hidden');
+        }
+
+        /**
+         * Renders the table showing historical commodity prices with alternating row colors.
+         */
+        function renderCommoditiesTable() {
+            const container = document.getElementById('commodities-container');
+            
+            let html = `<table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-indigo-50 border-b-2 border-indigo-200">
+                    <tr>
+                        <th scope="col" class="px-4 py-4 text-left text-sm font-extrabold text-indigo-700 uppercase tracking-wider sticky left-0 bg-indigo-50 rounded-tl-xl">
+                            Commodity
+                        </th>
+                        ${COMMODITY_YEARS.map(year => 
+                            `<th scope="col" class="px-4 py-4 text-center text-sm font-extrabold text-indigo-700 uppercase tracking-wider">${year}</th>`
+                        ).join('')}
+                        <th scope="col" class="px-4 py-4 text-center text-sm font-extrabold text-indigo-700 uppercase tracking-wider rounded-tr-xl"></th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-100">`;
+
+            let rowIndex = 0;
+            for (const commodity in COMMODITY_DATA) {
+                const rowClass = rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50';
+                
+                html += `<tr class="${rowClass}">
+                    <td class="px-4 py-4 whitespace-nowrap text-base font-semibold text-gray-900 sticky left-0 ${rowClass}">${commodity}</td>`;
+                
+                COMMODITY_YEARS.forEach(year => {
+                    const price = COMMODITY_DATA[commodity][year];
+                    html += `<td class="px-4 py-4 whitespace-nowrap text-base text-gray-700 text-center">
+                        ₹${price.toLocaleString('en-IN', { minimumFractionDigits: (year < 1980) ? 2 : 0, maximumFractionDigits: 2 })}
+                    </td>`;
+                });
+                // Empty cell for right alignment, if needed
+                html += `<td class="px-4 py-4 whitespace-nowrap"></td></tr>`;
+                rowIndex++;
+            }
+
+            html += `</tbody></table>`;
+            container.innerHTML = html;
+        }
+
+        /**
+         * Renders the line graph of Gold Price using D3.js with Area Fill.
+         */
+        function renderGoldGraph() {
+            const container = document.getElementById('gold-graph-container');
+            const svgElement = d3.select("#gold-graph");
+            
+            // Clear previous SVG content
+            svgElement.selectAll("*").remove();
+
+            // Setup dimensions
+            const margin = { top: 20, right: 20, bottom: 50, left: 80 };
+            const containerWidth = container.clientWidth;
+            const containerHeight = container.clientHeight;
+            const width = containerWidth - margin.left - margin.right;
+            const height = containerHeight - margin.top - margin.bottom;
+
+            const svg = svgElement
+                .attr("viewBox", `0 0 ${containerWidth} ${containerHeight}`)
+                .append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+
+            // Define scales
+            const x = d3.scaleTime()
+                .domain(d3.extent(GOLD_PRICE_DATA, d => new Date(d.year, 0, 1)))
+                .range([0, width]);
+
+            const y = d3.scaleLinear()
+                .domain([0, d3.max(GOLD_PRICE_DATA, d => d.price) * 1.05]) // Max + 5% padding
+                .range([height, 0]);
+
+            // 1. Define Area Generator (for the fancy fill)
+            const area = d3.area()
+                .x(d => x(new Date(d.year, 0, 1)))
+                .y0(height) // Start from the bottom
+                .y1(d => y(d.price))
+                .curve(d3.curveMonotoneX); // Smooth curve for area
+
+            // 2. Add Gradient Definition
+            const defs = svg.append("defs");
+            const gradient = defs.append("linearGradient")
+                .attr("id", "areaGradient")
+                .attr("x1", "0%")
+                .attr("x2", "0%")
+                .attr("y1", "0%")
+                .attr("y2", "100%");
+
+            gradient.append("stop")
+                .attr("offset", "0%")
+                .attr("style", "stop-color:var(--primary);stop-opacity:0.3");
+            
+            gradient.append("stop")
+                .attr("offset", "100%")
+                .attr("style", "stop-color:var(--primary);stop-opacity:0");
+
+            // Define the line generator
+            const line = d3.line()
+                .x(d => x(new Date(d.year, 0, 1)))
+                .y(d => y(d.price))
+                .curve(d3.curveMonotoneX); // Smooth curve for line
+
+            // Draw the Area Path (before the line path so the line sits on top)
+            svg.append("path")
+                .datum(GOLD_PRICE_DATA)
+                .attr("class", "gold-area")
+                .attr("fill", "url(#areaGradient)")
+                .attr("d", area);
+
+
+            // Draw X axis
+            svg.append("g")
+                .attr("class", "axis x-axis")
+                .attr("transform", `translate(0,${height})`)
+                .call(d3.axisBottom(x).ticks(d3.timeYear.every(10)).tickFormat(d3.timeFormat("%Y")));
+            
+            // X-Axis Label
+            svg.append("text")
+                .attr("transform", `translate(${width / 2}, ${height + margin.bottom - 10})`)
+                .style("text-anchor", "middle")
+                .attr("class", "text-sm text-gray-600 font-medium")
+                .text("Year");
+
+            // Draw Y axis with Indian Rupee formatting
+            const yAxis = d3.axisLeft(y)
+                .tickFormat(d => `₹${(d / 1000).toFixed(0)}K`); // Format as K for readability
+
+            svg.append("g")
+                .attr("class", "axis y-axis")
+                .call(yAxis);
+
+            // Y-Axis Label
+            svg.append("text")
+                .attr("transform", "rotate(-90)")
+                .attr("y", 0 - margin.left)
+                .attr("x", 0 - (height / 2))
+                .attr("dy", "1em")
+                .style("text-anchor", "middle")
+                .attr("class", "text-sm text-gray-600 font-medium")
+                .text("Price of 10g Gold (INR)");
+
+            // Draw the line path
+            svg.append("path")
+                .datum(GOLD_PRICE_DATA)
+                .attr("class", "line")
+                .attr("d", line);
+            
+            // Add focus points (circles)
+            svg.selectAll("dot")
+                .data(GOLD_PRICE_DATA)
+                .enter().append("circle")
+                .attr("r", 6)
+                .attr("cx", d => x(new Date(d.year, 0, 1)))
+                .attr("cy", d => y(d.price))
+                .attr("fill", "var(--primary)")
+                .attr("stroke", "white")
+                .attr("stroke-width", 3)
+                .on("mouseover", function(event, d) {
+                    // Get current screen position of the graph container
+                    const containerRect = container.getBoundingClientRect();
+                    
+                    const tooltip = d3.select("#app").append("div")
+                        .attr("class", "absolute bg-gray-800 text-white p-2 rounded-lg pointer-events-none transition-opacity duration-300 shadow-md z-10")
+                        .attr("id", "tooltip")
+                        .style("opacity", 0);
+                    
+                    // Calculate tooltip position relative to the viewport
+                    const xPosition = event.clientX + 15;
+                    const yPosition = event.clientY - 30;
+
+                    tooltip.html(`
+                        <p class="font-bold text-sm">${d.year}</p>
+                        <p class="text-xs">₹${d.price.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
+                    `)
+                    .style("left", `${xPosition}px`)
+                    .style("top", `${yPosition}px`);
+                    
+                    tooltip.transition()
+                        .duration(200)
+                        .style("opacity", .9);
+                })
+                .on("mouseout", function() {
+                    d3.select("#tooltip").remove();
+                });
+        }
+
+        // Initialize the application when the DOM is ready
+        window.onload = init;
+        window.addEventListener('resize', renderGoldGraph); // Redraw graph on resize
+    </script>
+</body>
+</html>
